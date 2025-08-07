@@ -398,13 +398,21 @@ def get_cis_ranges(phenotype_pos_df, chr_variant_dfs, window, verbose=True):
 
         pos = phenotype_pos_dict[phenotype_id]
         chrom = pos['chr']
-        m = len(chr_variant_dfs[chrom]['pos'].values)
-        lb = bisect.bisect_left(chr_variant_dfs[chrom]['pos'].values, pos['start'] - window)
-        ub = bisect.bisect_right(chr_variant_dfs[chrom]['pos'].values, pos['end'] + window)
-        if lb != ub:
-            r = chr_variant_dfs[chrom]['index'].values[[lb, ub - 1]]
-        else:
-            r = []
+
+        chr_variant_dfs_sortpos = chr_variant_dfs[chrom].sort_values(by='pos')
+        chr_variant_dfs_sortend = chr_variant_dfs[chrom].sort_values(by='end')
+        
+        r = []
+
+        lb = bisect.bisect_left(chr_variant_dfs_sortpos['pos'].values, pos['start'] - window)
+        ub = bisect.bisect_right(chr_variant_dfs_sortpos['pos'].values, pos['end'] + window)
+        start_index = chr_variant_dfs_sortpos['index'].values[lb:ub]
+
+        lb = bisect.bisect_left(chr_variant_dfs_sortend['end'].values, pos['start'] - window)
+        ub = bisect.bisect_right(chr_variant_dfs_sortend['end'].values, pos['end'] + window)
+        end_index = chr_variant_dfs_sortend['index'].values[lb:ub]
+
+        r = np.union1d(start_index, end_index)
 
         if len(r) > 0:
             cis_ranges[phenotype_id] = r
@@ -459,7 +467,7 @@ class InputGeneratorCis(object):
         self.group_s = None
         self.window = window
 
-        self.chr_variant_dfs = {c:g[['pos', 'index']] for c,g in self.variant_df.groupby('chrom')}
+        self.chr_variant_dfs = {c:g[['pos', 'end', 'index']] for c,g in self.variant_df.groupby('chrom')}
 
         # check phenotypes & calculate genotype ranges
         # get genotype indexes corresponding to cis-window of each phenotype
@@ -508,7 +516,7 @@ class InputGeneratorCis(object):
                 p = self.phenotype_df.values[index_dict[phenotype_id]]
                 # p = self.phenotype_df.values[k]
                 r = self.cis_ranges[phenotype_id]
-                yield p, self.genotype_df.values[r[0]:r[-1]+1], np.arange(r[0],r[-1]+1), phenotype_id
+                yield p, np.take(self.genotype_df.values, r, 0), r, phenotype_id
         else:
             gdf = self.group_s[phenotype_ids].groupby(self.group_s, sort=False)
             for k,(group_id,g) in enumerate(gdf, chr_offset+1):
